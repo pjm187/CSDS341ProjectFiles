@@ -23,7 +23,9 @@ supabase: Client = create_client(url, key)
 # We need to map strings from the CSVs to their actual Database Integer IDs
 driver_data = supabase.table("driver").select("driverid, name").execute().data
 team_data = supabase.table("teamseason").select("teamid, shortname").execute().data
-race_data = supabase.table("race").select("raceid, seasonyear, gpname").execute().data
+gp_data = supabase.table("grandprix").select("gpid, gpname").execute().data
+gpid_to_name = {row['gpid']: str(row['gpname']).strip().lower() for row in gp_data}
+race_data = supabase.table("race").select("raceid, seasonyear, gpid").execute().data
 
 # Create mapping dictionaries for quick lookups
 driver_map = {str(d['name']).strip().lower(): d['driverid'] for d in driver_data}
@@ -87,7 +89,7 @@ def get_race_id(season_year, track_name):
     for r in race_data:
         # Must match the exact season year to avoid grabbing the wrong year's race ID
         if r['seasonyear'] == season_year:
-            gp_lower = str(r['gpname']).strip().lower()
+            gp_lower = gpid_to_name.get(r['gpid'], "")
             
             # If ANY of the alias words are found in the Database GP Name, it's a match!
             for alias in aliases:

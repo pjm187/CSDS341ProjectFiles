@@ -29,6 +29,11 @@ circuit_data = dp_response.data
 # Example: {'Albert Park Circuit': 1}
 circuitName_to_circuitid = {row['circuitname']: row['circuitid'] for row in circuit_data}
 
+gp_response = supabase.table('grandprix').select('gpid, gpname').execute()
+gp_data = gp_response.data
+gpName_to_gpid = {row['gpname']: row['gpid'] for row in gp_data}
+
+
 # Define where the calendar CSVs are stored
 location_directory = './calendars'
 all_race_data = []
@@ -66,17 +71,17 @@ combined_df = pd.concat(all_race_data, ignore_index=True)
 # Clean up the track name strings (strip whitespace, apply Title Case) 
 # and use our dictionary to replace the string with the proper 'circuitid' integer
 combined_df['circuitid'] = combined_df['Circuit Name'].str.strip().str.title().map(circuitName_to_circuitid)
+combined_df['gpid'] = combined_df['GP Name'].str.strip().map(gpName_to_gpid)
 
 # 5. Clean and Format the Data for Insertion
 # Extract only the columns relevant to the Race table
 race_df = combined_df[[
-    'seasonyear',  'Round', 'GP Name', 'Number of Laps', 'Race Date', 'circuitid'
+    'seasonyear',  'Round', 'gpid', 'Number of Laps', 'Race Date', 'circuitid'
     ]].copy()
 
 # Rename columns to perfectly match the PostgreSQL schema (lowercase, no spaces)
 race_df = race_df.rename(columns ={
         'Round': 'round', 
-        'GP Name':'gpname', 
         'Number of Laps':'laps', 
         'Race Date':'racedate'
 })
@@ -92,6 +97,12 @@ race_df['racedate'] = pd.to_datetime(race_df['racedate'], format='mixed', dayfir
 # Convert Pandas NaN values into Python None objects for PostgreSQL compatibility
 race_df = race_df.astype(object).where(pd.notna(race_df), None)
 data_to_insert = race_df.to_dict(orient='records')
+
+int_columns = ['raceid', 'seasonyear', 'round', 'gpid', 'laps', 'circuitid']
+for record in data_to_insert:
+    for col in int_columns:
+        if record.get(col) is not None:
+            record[col] = int(record[col]) 
 
 # 6. Insert into Database
 if len(data_to_insert) > 0:
