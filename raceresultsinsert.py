@@ -135,6 +135,7 @@ def get_driver_id(driver_raw):
 
 # -------------------
 
+# I put all of the files in a folder to read all of the CSV's
 results_directory = './raceresults'
 all_result_entries = []
 
