@@ -36,6 +36,9 @@ db_driver_names = list(driver_map.keys())
 # Maps "Country" from the Results CSV to an Array of native/alternative words used in the Calendar CSV.
 # This solves the issue of the CSV saying "Brazil" but the Database saying "São Paulo".
 race_aliases = {
+    "italy": ["italia", "d'italia", "monza", "italian"],
+    # If the CSV says "Qatar", look for these:
+    "qatar": ["qatar airways qatar", "lusail"],
     "brazil": ["são paulo", "sao paulo", "brasil", "brazil"],
     "emilia-romagna": ["emilia", "romagna"],
     "emilia romagna": ["emilia", "romagna"],
@@ -48,13 +51,13 @@ race_aliases = {
     "austria": ["austrian", "austria", "österreich", "osterreich", "styrian", "steiermark"],
     "hungary": ["hungarian", "hungary", "magyar"],
     "belgium": ["belgian", "belgium", "belgique"],
-    "italy": ["italian", "italy", "italia", "tuscan", "tuscany"],
+    #"italy": ["italian", "italy", "italia", "d'italia", "monza"],
     "china": ["chinese", "china"],
     "japan": ["japanese", "japan"],
     "canada": ["canadian", "canada"],
     "australia": ["australian", "australia"],
     "saudi arabia": ["saudi", "arabia"],
-    "qatar": ["qatar"],
+    #"qatar": ["qatar", "airways", "lusail"],
     "bahrain": ["bahrain", "sakhir"], 
     "abu dhabi": ["abu dhabi"],
     "las vegas": ["las vegas"],
@@ -83,18 +86,30 @@ def get_race_id(season_year, track_name):
     if not track_name: return None
     track_lower = track_name.lower().strip()
     
-    # Grab the list of native keywords (or default to the track name itself)
-    aliases = race_aliases.get(track_lower, [track_lower])
+    # 1. Determine the "Key" (e.g., 'italy' or 'emilia') from the CSV track name
+    search_key = None
+    for key in race_aliases.keys():
+        if key in track_lower:
+            search_key = key
+            break
     
+    # 2. Search through the existing races in the DB for that season
     for r in race_data:
-        # Must match the exact season year to avoid grabbing the wrong year's race ID
         if r['seasonyear'] == season_year:
-            gp_lower = gpid_to_name.get(r['gpid'], "")
+            gp_db_name = gpid_to_name.get(r['gpid'], "").lower()
             
-            # If ANY of the alias words are found in the Database GP Name, it's a match!
-            for alias in aliases:
-                if alias in gp_lower or gp_lower in alias:
-                    return r['raceid']
+            # If we found a key (like 'italy'), check if the DB name matches any of its aliases
+            if search_key:
+                for alias in race_aliases[search_key]:
+                    if alias in gp_db_name:
+                        # Special check: If CSV says 'Italy' but DB is 'Emilia', don't match unless specifically 'emilia'
+                        if search_key == "italy" and "emilia" in gp_db_name:
+                            continue
+                        return r['raceid']
+            
+            # Fallback: Direct partial match
+            if gp_db_name in track_lower or track_lower in gp_db_name:
+                return r['raceid']
     return None
 
 # Helper Function: Matches a CSV team to a Database TeamID
@@ -137,7 +152,6 @@ def get_driver_id(driver_raw):
 
 # -------------------
 
-# I put all of the files in a folder to read all of the CSV's
 results_directory = './raceresults'
 all_result_entries = []
 
@@ -181,6 +195,14 @@ for filename in os.listdir(results_directory):
             driver_id = get_driver_id(driver_raw)
             team_id = get_team_id(team_name)
             race_id = get_race_id(season_year, gp_name)
+
+            if gp_name.lower() in ["italy", "qatar"]:
+                if not race_id:
+                    print(f"[FAIL] Race missing: {gp_name} {season_year}")
+                if not driver_id:
+                    print(f"[FAIL] Driver missing: '{driver_raw}' in {gp_name}")
+                if not team_id:
+                    print(f"[FAIL] Team missing: '{team_name}' in {gp_name}")
 
             # Warning system for unresolved constraints
             if not race_id: print(f"Missing match for Race: {gp_name} ({season_year})")
